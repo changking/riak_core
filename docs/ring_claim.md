@@ -321,7 +321,7 @@ Note, that a 5-node cluster is not a lonely exception.  There are similar issues
 
 Evaluating the Claim v2 algorithm reveals the following weaknesses:
 
-- Property-based testing doesn't correctly test the safety clusters formed through cluster plans;
+- Property-based testing doesn't correctly test the safety of clusters formed through cluster plans, and a [simple modification](https://github.com/basho/riak_core/compare/develop...russelldb:rdb/claim-eqc-borked) to the property test demonstrates this;
 
 - The algorithm (and the test) don't check correctly for a truly even distribution of vnodes across nodes;
 
