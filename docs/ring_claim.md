@@ -44,7 +44,9 @@ There are some properties of this claiming process which are required, and are l
 
 - the above properties should be upheld if nodes are added one-by-one, or joined in bulk;
 
-- vnodes should ideally be spaced as a far as possible, not just minimally.
+- vnodes should ideally be spaced as a far as possible, not just minimally;
+
+- consideration needs to be given to multiplication of copysets in large clusters, and the potential for loss of data access on recovery from mass power failure.
 
 Each of these properties will be examined in turn, and the explanation of those properties will hint at both how Riak may fail to meet some of these properties, and how that failure could be resolved.  The specific problems in Riak and the proposed solution will be explained in a later section.
 
@@ -206,6 +208,24 @@ In this scenario if two nodes were to fail (node 1 and node 2), the fallbacks el
 With this arrangement, a clearly sub-optimal scenario is created on two node failures - as multiple preflists lost node diversity (i.e. they had fallbacks elected that were not on physically diverse nodes to surviving primaries), and there is a significant bias of load towards one particular node.
 
 Ideally the spacing between partitions for a node should not just be `target_n_val` but further if possible.
+
+### Copysets and the data loss problem
+
+Failure scenarios in large clusters have potential weak-spots with random distributions of data across nodes - as articulated in the [Copysets paper by Asaf Cidon et al](http://web.stanford.edu/~cidon/materials/CR.pdf).  The paper sites evidence that of the order of 1% of nodes may not return after a sudden power loss event, and considers that if all three nodes used for storage are all concurrently impacted this will constitute a temporary data-loss event which may require expensive intervention to resolve.
+
+Every cluster has a number of copysets, the copysets being unique sets of three nodes that hold any individual item of data.  If data is randomly distributed across sets of three nodes, then as the number of nodes grow, the number of copysets grows exponentially.  This means that at just 300 nodes, such a data loss event following a mass power outage becomes highly probable - at least one copyset is almost certainly impacted.
+
+When using a ring structure, this is not however such a significant issue.  Assuming a need for even distribution of data, the number of copysets for any ring has a lower-bound of the number of nodes.  The lower-bound is achieved if the partitions are allocated to nodes sequentially.  So an allocation such as this
+
+``| n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 | n1 | n2 | n3 | n4 | n5 | n6 | n7 | n8 |``
+
+Would have only eight copysets: {n1, n2, n3}, {n2, n3, n4}, {n3, n4, n5}, {n6, n7, n8}, {n7, n8, n1} and {n8, n1, n2}.
+
+However there is also an upper-bound, in that within the constraints of the ring the number of copysets cannot exceed the ring-size.  Standard cluster capacity planning guidance is for the ring-size to be approximately 10 x the size of the number of nodes: so the growth of the upper-bound progresses linearly with the number of nodes, and is generally only a single order of magnitude greater than the lower-bound.
+
+So, using a ring, if there are 300 nodes, the lower-bound of copysets is 300, but the upper-bound regardless of the distribution algorithm would normally be 4096 (that being the standard ring-size for a cluster of that physical size).  So the probability of a data loss event on mass power outage is still < 1%, even if distribution was sufficiently random to hit the upper-bound.  This is an order of magnitude higher than the probability with a perfectly sequential allocation of partitions of nodes, but that difference is not significant until cluster sizes become much larger.
+
+For much larger cluster sizes, some consideration may be required to limiting randomisation to stay within the recommend optimal number of copysets.  However, much larger cluster sizes are not currently a common use case for Riak.
 
 ## Riak Claim v2 and Upholding Claim properties
 
