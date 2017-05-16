@@ -10,6 +10,22 @@ However, the ring, and in particular the process by which nodes claim from the r
 
 This is an attempt to explain the problems associated with claiming from a ring, examine the current implementations of claim within Riak and some issues with it, and then discuss areas for improvement.
 
+## Overview of the Ring - Terminology
+
+Some terminology which will help understand the basics of the ring in Riak:
+
+- [Node](http://docs.basho.com/riak/kv/2.2.3/learn/glossary/#node) - a physical computer which will hold a subset of the data, and manage a subset of the load within Riak.  Normally, there should be [at least five nodes in a Riak cluster](http://basho.com/posts/technical/why-your-riak-cluster-should-have-at-least-five-nodes/).
+
+- [Vnode](http://docs.basho.com/riak/kv/2.2.3/learn/glossary/#vnode) - the unit of concurrency in Riak, in the case of Riak KV an individual key-value store being orchestrated by Riak core.
+
+- Ring-Size - the number of [partitions](http://docs.basho.com/riak/kv/2.2.3/learn/glossary/#partition) of the hashed key-space, which will then be mapped to vnodes.
+
+- [Ring](http://docs.basho.com/riak/kv/2.2.3/learn/glossary/#ring) - an object which describes the partitioning of the key-space, the mapping between partitions (or vnodes) and physical nodes, and any planned or active changes to that configuration.
+
+- Preflist - the set of primary vnodes that an object should be stored in if the key hashes to a given partition (normally that partition and the next two in the ring).
+
+- Fallback - a vnode that will be used to store objects should a vnode in the preflist not be available.
+
 ## Overview of The Ring - the Basics
 
 At design time of a Riak cluster, it is necessary to set the [size of the ring](http://docs.basho.com/riak/kv/2.2.3/configuring/basic/#ring-size) to a power of two.  Getting this right at the start is important, as although there exists the potential to resize a ring post go-live, it is difficult to do in a risk-free way under production load.  Currently, ring re-sizing is not a solved problem.  Guidance on how to size a ring in advance is [vague](http://docs.basho.com/riak/kv/2.2.3/setup/planning/cluster-capacity/#ring-size-number-of-partitions).  Currently, correctly setting the size of a ring to avoid resizing is not a solved problem.
