@@ -456,7 +456,7 @@ The first three stages are expected to be relatively simple, the final stage may
 
 ### Physical Promises at Run-Time
 
-To the developer, Riak will provide promises with respect to the ring.  The developer can choose n, r, w, pw, pr, dw values to suit the application - but all these refer to vnodes and don't say anything directly about physical nodes.  The relationship between the ring-based promises and the physical outcome have to be assumed.
+To the developer, Riak will provide promises with respect to the ring.  The developer can choose n, r, w, pw, pr, dw values to suit the application, but all these refer to vnodes and don't say anything directly about physical nodes.  The relationship between the ring-based promises and the physical outcome have to be assumed.
 
 If as a developer the requirement of the database is that data has been made durable on two physical nodes before it is acknowledged, the way of being sure of this commitment is by setting primary writes (pw) to 2.  In this case, <b>if</b> the ring has been constructed correctly with a target_n_val of 4, then confirmation from two primary partitions is enough to be sure that the update has been acknowledged by two different physical nodes.
 
