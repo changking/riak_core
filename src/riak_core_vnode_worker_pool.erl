@@ -39,8 +39,6 @@
 %% confuse (or cause a race) with this module's checkout management.
 -module(riak_core_vnode_worker_pool).
 
--include("riak_core_worker_pool.hrl").
-
 -behaviour(riak_core_worker_pool).
 
 -export([reply/2, do_work/3]).

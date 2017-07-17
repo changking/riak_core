@@ -39,8 +39,6 @@
 %% confuse (or cause a race) with this module's checkout management.
 -module(riak_core_worker_pool).
 
--include("riak_core_worker_pool.hrl").
-
 -behaviour(gen_fsm).
 
 %% gen_fsm callbacks
@@ -60,6 +58,14 @@
 -compile({pulse_replace_module, [{gen_fsm, pulse_gen_fsm}]}).
 -endif.
 
+
+-record(state, {
+				queue = queue:new(),
+				pool :: pid(),
+				monitors = [] :: list(),
+				shutdown :: undefined | {pid(), reference()},
+				callback_mod :: atom()
+    }).
 
 -callback start_link(WorkerMod::atom(),
 							PoolSize::integer(),

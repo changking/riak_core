@@ -19,8 +19,6 @@
 
 -module(riak_core_node_worker_pool).
 
--include("riak_core_worker_pool.hrl").
-
 -behaviour(riak_core_worker_pool).
 
 -export([reply/2, do_work/3]).
