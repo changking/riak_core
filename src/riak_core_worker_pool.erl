@@ -61,9 +61,6 @@
 -endif.
 
 
--callback ready(Event::term(), ModState::term()) ->
-	{next_state, NextAction::atom(), NewModState::term()}.
-
 -callback start_link(WorkerMod::atom(),
 							PoolSize::integer(),
 							VNodeIndex::integer(),
@@ -71,14 +68,16 @@
 							WorkerProps::list())
 						-> any().
 
--callback handle_work(Pid::pid(), Work::term(), From::term()) ->
-	any().
+-callback handle_work(Pid::pid(), Work::term(), From::term()) -> any().
 
--callback stop(Pid::pid(), Reason::term()) ->
-	any().
+-callback stop(Pid::pid(), Reason::term()) -> any().
 
--callback shutdown_pool(Pid::pid(), Wait::integer()) ->
-	any().
+-callback shutdown_pool(Pid::pid(), Wait::integer()) -> any().
+
+-callback reply(Term::term(), Term::term()) -> any().
+
+-callback do_work(Pid::pid(), Work::term(), From::term()) -> any().
+
 
 start_link(WorkerMod,
 			PoolSize, VNodeIndex,
@@ -115,21 +114,32 @@ ready(_Event, _From, State) ->
 queueing(_Event, _From, State) ->
     {reply, ok, queueing, State}.
 
-ready(Event, State) ->
-	Mod = State#state.callback_mod,
-	Mod:ready(Event, State).
+shutdown(_Event, _From, State) ->
+    {reply, ok, shutdown, State}.
+
+ready({work, Work, From} = Msg, #state{pool=Pool, queue=Q, monitors=Monitors} = State) ->
+    case poolboy:checkout(Pool, false) of
+        full ->
+            {next_state, queueing, State#state{queue=queue:in(Msg, Q)}};
+        Pid when is_pid(Pid) ->
+            NewMonitors =
+				riak_core_worker_pool:monitor_worker(Pid, From, Work, Monitors),
+            Mod = State#state.callback_mod,
+			Mod:do_work(Pid, Work, From),
+            {next_state, ready, State#state{monitors=NewMonitors}}
+    end;
+ready(_Event, State) ->
+    {next_state, ready, State}.
 
 queueing({work, _Work, _From} = Msg, #state{queue=Q} = State) ->
     {next_state, queueing, State#state{queue=queue:in(Msg, Q)}};
 queueing(_Event, State) ->
     {next_state, queueing, State}.
 
-shutdown(_Event, _From, State) ->
-    {reply, ok, shutdown, State}.
-
 shutdown({work, _Work, From}, State) ->
     %% tell the process requesting work that we're shutting down
-    riak_core_vnode:reply(From, {error, vnode_shutdown}),
+    Mod = State#state.callback_mod,
+	Mod:reply(From, {error, vnode_shutdown}),
     {next_state, shutdown, State};
 shutdown(_Event, State) ->
     {next_state, shutdown, State}.
@@ -149,7 +159,8 @@ handle_event({checkin, Worker}, _, #state{pool = Pool, queue=Q, monitors=Monitor
             %% there is outstanding work to do - instead of checking
             %% the worker back in, just hand it more work to do
             NewMonitors = monitor_worker(Worker, From, Work, Monitors),
-            riak_core_vnode_worker:handle_work(Worker, Work, From),
+            Mod = State#state.callback_mod,
+			Mod:do_work(Worker, Work, From),
             {next_state, queueing, State#state{queue=Rem,
                                                monitors=NewMonitors}};
         {empty, Empty} ->
@@ -166,7 +177,8 @@ handle_event(worker_start, StateName, #state{pool=Pool, queue=Q, monitors=Monito
                     {next_state, queueing, State};
                 Pid when is_pid(Pid) ->
                     NewMonitors = monitor_worker(Pid, From, Work, Monitors),
-                    riak_core_vnode_worker:handle_work(Pid, Work, From),
+                    Mod = State#state.callback_mod,
+					Mod:do_work(Pid, Work, From),
                     {next_state, queueing, State#state{queue=Rem, monitors=NewMonitors}}
             end;
         {empty, _} ->
@@ -180,7 +192,7 @@ handle_sync_event({stop, Reason}, _From, _StateName, State) ->
     {stop, Reason, ok, State}; 
 handle_sync_event({shutdown, Time}, From, _StateName, #state{queue=Q,
         monitors=Monitors} = State) ->
-    discard_queued_work(Q),
+    discard_queued_work(Q, State#state.callback_mod),
     case Monitors of
         [] ->
             {stop, shutdown, ok, State};
@@ -201,7 +213,8 @@ handle_info({'DOWN', _Ref, _, Pid, Info}, StateName, #state{monitors=Monitors} =
     %% remove the listing for the dead worker
     case lists:keyfind(Pid, 1, Monitors) of
         {Pid, _, From, Work} ->
-            riak_core_vnode:reply(From, {error, {worker_crash, Info, Work}}),
+			Mod = State#state.callback_mod,
+			Mod:reply(From, {error, {worker_crash, Info, Work}}),
             NewMonitors = lists:keydelete(Pid, 1, Monitors),
             %% trigger to do more work will be 'worker_start' message
             %% when poolboy replaces this worker (if not a 'checkin'
@@ -211,8 +224,9 @@ handle_info({'DOWN', _Ref, _, Pid, Info}, StateName, #state{monitors=Monitors} =
             {next_state, StateName, State}
     end;
 handle_info(shutdown, shutdown, #state{monitors=Monitors} = State) ->
-    %% we've waited too long to shutdown, time to force the issue.
-    _ = [riak_core_vnode:reply(From, {error, vnode_shutdown}) || 
+    %% we've waited too long to shutdown, time to force the issue
+	Mod = State#state.callback_mod,
+    _ = [Mod:reply(From, {error, vnode_shutdown}) || 
             {_, _, From, _} <- Monitors],
     {stop, shutdown, State};
 handle_info(_Info, StateName, State) ->
@@ -248,11 +262,11 @@ demonitor_worker(Worker, Monitors) ->
             Monitors
     end.
 
-discard_queued_work(Q) ->
+discard_queued_work(Q, Mod) ->
     case queue:out(Q) of
         {{value, {work, _Work, From}}, Rem} ->
-            riak_core_vnode:reply(From, {error, vnode_shutdown}),
-            discard_queued_work(Rem);
+            Mod:reply(From, {error, vnode_shutdown}),
+            discard_queued_work(Rem, Mod);
         {empty, _Empty} ->
             ok
     end.

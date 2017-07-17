@@ -43,7 +43,7 @@
 
 -behaviour(riak_core_worker_pool).
 
--export([ready/2]).
+-export([reply/2, do_work/3]).
 
 %% API
 -export([start_link/5, stop/2, shutdown_pool/2, handle_work/3]).
@@ -67,15 +67,10 @@ stop(Pid, Reason) ->
 shutdown_pool(Pid, Wait) ->
 	riak_core_worker_pool:shutdown_pool(Pid, Wait).
 
-ready({work, Work, From} = Msg, #state{pool=Pool, queue=Q, monitors=Monitors} = State) ->
-    case poolboy:checkout(Pool, false) of
-        full ->
-            {next_state, queueing, State#state{queue=queue:in(Msg, Q)}};
-        Pid when is_pid(Pid) ->
-            NewMonitors =
-				riak_core_worker_pool:monitor_worker(Pid, From, Work, Monitors),
-            riak_core_vnode_worker:handle_work(Pid, Work, From),
-            {next_state, ready, State#state{monitors=NewMonitors}}
-    end;
-ready(_Event, State) ->
-    {next_state, ready, State}.
+reply(From, Msg) ->
+	riak_core_vnode:reply(From, Msg).
+
+do_work(Pid, Work, From) ->
+	riak_core_vnode_worker:handle_work(Pid, Work, From).
+
+
