@@ -66,7 +66,7 @@ simple_worker_pool() ->
     riak_core_vnode_worker_pool:stop(Pool, normal).
 
 simple_node_worker_pool() ->
-	{ok, Pool} = riak_core_node_worker_pool:start_link(?MODULE, 3, 10, false, []),
+	{ok, Pool} = riak_core_node_worker_pool:start_link(?MODULE, 3, false, []),
 	[ riak_core_node_worker_pool:handle_work(node_worker_pool, fun() ->
                         timer:sleep(100),
                         1/(N rem 2)

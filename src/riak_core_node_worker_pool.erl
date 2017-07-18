@@ -21,21 +21,30 @@
 
 -behaviour(riak_core_worker_pool).
 
--export([reply/2, do_work/3]).
+-export([do_init/1, reply/2, do_work/3]).
 
 %% API
--export([start_link/5, stop/2, shutdown_pool/2, handle_work/3]).
+-export([start_link/4, stop/2, shutdown_pool/2, handle_work/3]).
 
 
 start_link(WorkerMod,
-			PoolSize, VNodeIndex,
-			WorkerArgs, WorkerProps) ->
-	{ok, Pid} = riak_core_worker_pool:start_link(WorkerMod,
-													PoolSize, VNodeIndex,
-													WorkerArgs, WorkerProps,
+			PoolSize,
+			WorkerArgs,
+			WorkerProps) ->
+	{ok, Pid} = riak_core_worker_pool:start_link([WorkerMod,
+														PoolSize,
+														WorkerArgs,
+														WorkerProps],
 													?MODULE),
 	register(node_worker_pool, Pid),
 	{ok, Pid}.
+
+do_init([WorkerMod, PoolSize, WorkerArgs, WorkerProps]) ->
+    poolboy:start_link([{worker_module, riak_core_vnode_worker},
+							{worker_args,
+								[node, WorkerArgs, WorkerProps, self()]},
+							{worker_callback_mod, WorkerMod},
+							{size, PoolSize}, {max_overflow, 0}]).
 
 handle_work(Pid, Work, From) ->
 	riak_core_worker_pool:handle_work(Pid, Work, From).

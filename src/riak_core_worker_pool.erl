@@ -45,7 +45,7 @@
 -export([init/1, handle_event/3, handle_sync_event/4, handle_info/3,
         terminate/3, code_change/4]).
 
--export([start_link/6, handle_work/3, stop/2, shutdown_pool/2]).
+-export([start_link/2, handle_work/3, stop/2, shutdown_pool/2]).
 
 %% gen_fsm states
 -export([queueing/2, ready/2, ready/3, queueing/3, shutdown/2, shutdown/3]).
@@ -67,12 +67,6 @@
 				callback_mod :: atom()
     }).
 
--callback start_link(WorkerMod::atom(),
-							PoolSize::integer(),
-							VNodeIndex::integer(),
-							WorkerArgs::list(),
-							WorkerProps::list())
-						-> any().
 
 -callback handle_work(Pid::pid(), Work::term(), From::term()) -> any().
 
@@ -80,21 +74,15 @@
 
 -callback shutdown_pool(Pid::pid(), Wait::integer()) -> any().
 
+-callback do_init(PoolBoyArgs::list()) -> {ok, pid()}.
+
 -callback reply(Term::term(), Term::term()) -> any().
 
 -callback do_work(Pid::pid(), Work::term(), From::term()) -> any().
 
 
-start_link(WorkerMod,
-			PoolSize, VNodeIndex,
-			WorkerArgs, WorkerProps,
-			CallbackMod) ->
-    gen_fsm:start_link(?MODULE,
-						[WorkerMod,
-							PoolSize,  VNodeIndex,
-							WorkerArgs, WorkerProps,
-							CallbackMod],
-						[]).
+start_link(PoolBoyArgs, CallbackMod) ->
+	gen_fsm:start_link(?MODULE, [PoolBoyArgs, CallbackMod], []).
 
 handle_work(Pid, Work, From) ->
     gen_fsm:send_event(Pid, {work, Work, From}).
@@ -106,14 +94,10 @@ stop(Pid, Reason) ->
 shutdown_pool(Pid, Wait) ->
     gen_fsm:sync_send_all_state_event(Pid, {shutdown, Wait}, infinity).
 
-
-init([WorkerMod, PoolSize, VNodeIndex, WorkerArgs, WorkerProps, CallbackMod]) ->
-    {ok, Pid} = poolboy:start_link([{worker_module, riak_core_vnode_worker},
-            {worker_args, [VNodeIndex, WorkerArgs, WorkerProps, self()]},
-            {worker_callback_mod, WorkerMod},
-            {size, PoolSize}, {max_overflow, 0}]),
-    {ok, ready, #state{pool=Pid, callback_mod=CallbackMod}}.
-
+init([PoolBoyArgs, CallbackMod]) ->
+	{ok, Pid} = CallbackMod:do_init(PoolBoyArgs),
+	{ok, ready, #state{pool=Pid, callback_mod=CallbackMod}}.
+	
 ready(_Event, _From, State) ->
     {reply, ok, ready, State}.
 
