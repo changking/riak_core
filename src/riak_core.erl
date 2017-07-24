@@ -331,7 +331,7 @@ register_mod(App, Module, Type) when is_atom(Type) ->
     end.
 
 register_pool(_App, WorkerMod, PoolSize, WorkerArgs, WorkerProps) ->
-	riak_core_vnode_worker_pool_sup:start_pool(WorkerMod,
+	riak_core_node_worker_pool_sup:start_pool(WorkerMod,
 												PoolSize,
 												WorkerArgs,
 												WorkerProps).
